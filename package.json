@@ -1,0 +1,15 @@
+{
+  "name": "zk-credit-dev1",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "ZK-Credit Scorer - AI prompt and signature logic for Midnight blockchain",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "dotenv": "^16.4.5",
+    "node-forge": "^1.3.1"
+  }
+}

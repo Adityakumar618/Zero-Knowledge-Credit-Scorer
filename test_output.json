@@ -1,0 +1,24 @@
+{
+  "test_run_at": "2026-05-16T07:58:06.975Z",
+  "mock_score_data": {
+    "user_id": "user_001",
+    "credit_score": 742,
+    "average_monthly_balance": 1005,
+    "debt_to_income_ratio": 0.5787,
+    "late_payments": 0,
+    "risk_level": "LOW",
+    "score_breakdown": {
+      "payment_history": 35,
+      "debt_ratio": 22,
+      "average_balance": 28
+    },
+    "timestamp": "2025-05-16T10:00:00.000Z"
+  },
+  "signature_sample": "D009VNq6f32uGQM5jN/COR10OPOiUawU+P7RTRC/...",
+  "signed_payload": "{\"user_id\":\"user_001\",\"credit_score\":742,\"average_monthly_balance\":1005,\"debt_to_income_ratio\":0.5787,\"late_payments\":0,\"risk_level\":\"LOW\",\"score_breakdown\":{\"payment_history\":35,\"debt_ratio\":22,\"average_balance\":28},\"timestamp\":\"2025-05-16T10:00:00.000Z\"}",
+  "issuer_public_key_hash": "88778572d18de6532391ad6927bdfe9c6e7681a1a05ab5347c3c7b383bced4f2",
+  "results": {
+    "passed": 9,
+    "failed": 0
+  }
+}
