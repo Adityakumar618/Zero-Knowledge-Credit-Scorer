@@ -37,7 +37,7 @@ declare global {
 }
 
 export function useMidnight() {
-  const [providers, setProviders] = useState<MidnightProviders | null>(null);
+  const [providers] = useState<MidnightProviders | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDemo, setIsDemo] = useState(true);
@@ -87,7 +87,7 @@ export function useMidnight() {
       return {
         proof: 'mock_zk_proof_' + Math.random().toString(36).substring(7),
         verified: true,
-        score: data.score,
+        score: data.creditScore,
         timestamp: new Date().toISOString()
       };
     }

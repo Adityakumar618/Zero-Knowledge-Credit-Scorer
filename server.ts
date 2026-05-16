@@ -1,74 +1,151 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-// Replaced Gemini client with a lightweight GROQ-compatible placeholder.
 import dotenv from "dotenv";
 import multer from "multer";
+import Groq from "groq-sdk";
+import { exec } from "child_process";
+import { promisify } from "util";
+import os from "os";
+import fs from "fs";
+import crypto from "crypto";
 
 dotenv.config();
+
+const execAsync = promisify(exec);
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Read GROQ API key (if available). This server contains a safe
-  // local fallback analysis so the app works without a remote AI key.
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
+  const groq = GROQ_API_KEY ? new Groq({ apiKey: GROQ_API_KEY }) : null;
 
   app.use(express.json());
 
-  // Set up multer for memory storage
   const upload = multer({ storage: multer.memoryStorage() });
 
-  // API Route for PDF bill upload and analysis
-  app.post("/api/upload-bill", upload.single('bill'), async (req, res) => {
+  app.post("/api/upload-bill", upload.single("bill"), async (req, res) => {
+    const tmpId = crypto.randomUUID();
+    const tmpPdf = path.join(os.tmpdir(), `${tmpId}.pdf`);
+    const tmpPrefix = path.join(os.tmpdir(), tmpId);
+
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
       }
+      if (!groq) {
+        return res.status(503).json({ error: "GROQ_API_KEY not configured — add it to .env" });
+      }
 
-      console.log('Analyzing PDF bill...');
+      // Write PDF to temp file and convert pages to PNG with pdftoppm
+      fs.writeFileSync(tmpPdf, req.file.buffer);
+      console.log(`Converting PDF (${req.file.size} bytes) to images...`);
+      await execAsync(`pdftoppm -r 150 -png -l 4 "${tmpPdf}" "${tmpPrefix}"`);
 
-      // If a GROQ API key is configured, you could call the GROQ/remote
-      // inference endpoint here. For safety in this demo repo we return
-      // a deterministic mock analysis so the frontend can function.
-      const mockAnalysis = {
-        totalAmount: "$123.45",
-        dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString().split('T')[0],
-        estimatedMonthlyIncome: "$3,200",
-        estimatedMonthlyExpenses: "$1,800",
-        rawTextSnippet: "Sample bill containing account and amount lines..."
-      };
+      // Collect generated PNG files (sorted page order)
+      const pngFiles = fs.readdirSync(os.tmpdir())
+        .filter(f => f.startsWith(tmpId) && f.endsWith(".png"))
+        .sort()
+        .map(f => path.join(os.tmpdir(), f));
 
-      res.json({ analysis: mockAnalysis });
+      if (pngFiles.length === 0) {
+        return res.status(422).json({ error: "Could not render PDF pages" });
+      }
+
+      console.log(`Sending ${pngFiles.length} page(s) to GROQ vision...`);
+
+      // Build image content blocks (one per page)
+      const imageBlocks = pngFiles.map(f => ({
+        type: "image_url" as const,
+        image_url: {
+          url: `data:image/png;base64,${fs.readFileSync(f).toString("base64")}`,
+        },
+      }));
+
+      const completion = await groq.chat.completions.create({
+        model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        messages: [
+          {
+            role: "user",
+            content: [
+              ...imageBlocks,
+              {
+                type: "text",
+                text: `You are a financial data extraction AI. Analyze this bank statement or bill and return ONLY raw valid JSON — no markdown, no explanation.
+
+Return exactly this structure (compute all values from what you see):
+{
+  "bills": [
+    { "id": "1", "provider": "<payee or merchant name>", "status": "paid|unpaid", "amount": <number>, "month": "<Mon YYYY>" }
+  ],
+  "monthlyIncome": <total credits/deposits as a number, or null if not visible>,
+  "monthlyExpenses": <total debits/withdrawals as a number>,
+  "totalDebt": <outstanding debt or 0>,
+  "latePayments": <count of overdue or late payments>,
+  "creditScore": <integer 300-850 based on payment behaviour and balance health>,
+  "riskLevel": "<LOW if score>=700, MEDIUM if 600-699, HIGH if <600>",
+  "scoreBreakdown": {
+    "payment_history": <integer out of 35>,
+    "debt_ratio": <integer out of 30>,
+    "average_balance": <integer out of 35>
+  }
+}`,
+              },
+            ],
+          },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const content = completion.choices[0]?.message?.content;
+      if (!content) {
+        return res.status(500).json({ error: "No response from GROQ" });
+      }
+
+      const analysis = JSON.parse(content);
+      console.log(`Score: ${analysis.creditScore}, Risk: ${analysis.riskLevel}, Bills: ${analysis.bills?.length ?? 0}`);
+      res.json({ analysis });
     } catch (error) {
-      console.error('PDF analysis error:', error);
-      res.status(500).json({ error: "Failed to analyze PDF bill" });
+      console.error("Upload error:", error);
+      res.status(500).json({ error: "Failed to analyze PDF" });
+    } finally {
+      // Clean up temp files
+      [tmpPdf, ...fs.readdirSync(os.tmpdir())
+        .filter(f => f.startsWith(tmpId))
+        .map(f => path.join(os.tmpdir(), f))
+      ].forEach(f => { try { fs.unlinkSync(f); } catch {} });
     }
   });
 
-  // API Route for credit score analysis (future AI feature)
   app.post("/api/analyze-credit", async (req, res) => {
     try {
+      if (!groq) {
+        return res.status(503).json({ error: "GROQ_API_KEY not configured" });
+      }
       const { financialData } = req.body;
-      // Mock analysis: real GROQ integration would call the external API
-      // and return the model output. Keep a predictable response here.
-      const summary = {
-        summary: "Mock credit analysis: reported score is healthy for demo purposes.",
-        details: {
-          recommendedAction: "No action required",
-          confidence: 0.74,
-          inputSnapshot: financialData,
-        }
-      };
-      res.json({ analysis: summary });
+      const completion = await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          { role: "system", content: "You are a credit scoring AI. Return ONLY raw valid JSON." },
+          {
+            role: "user",
+            content: `Analyze this financial data and return a credit summary:
+${JSON.stringify(financialData)}
+
+Return: { "summary": "<one sentence>", "confidence": <0-1>, "recommendedAction": "<string>" }`,
+          },
+        ],
+        response_format: { type: "json_object" },
+      });
+      const result = JSON.parse(completion.choices[0]?.message?.content ?? "{}");
+      res.json({ analysis: result });
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Failed to analyze credit data" });
     }
   });
 
-  // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -76,10 +153,10 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
