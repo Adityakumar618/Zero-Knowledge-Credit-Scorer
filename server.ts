@@ -65,30 +65,47 @@ async function startServer() {
 
       const completion = await groq.chat.completions.create({
         model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        temperature: 0,
         messages: [
+          {
+            role: "system",
+            content: "You are a bank statement parser. Extract all financial data and return ONLY raw JSON. No markdown, no explanation.",
+          },
           {
             role: "user",
             content: [
               ...imageBlocks,
               {
                 type: "text",
-                text: `You are a financial data extraction AI. Analyze this bank statement or bill and return ONLY raw valid JSON — no markdown, no explanation.
-
-Return exactly this structure (compute all values from what you see):
+                text: `Extract all financial data from this bank statement and return exactly this JSON structure (compute all values from what you see — no placeholders):
 {
+  "user_id": "<account number from statement>",
+  "bank": "<bank name>",
+  "currency": "<currency code, e.g. USD>",
+  "account_holder": "<full name on statement>",
+  "period": "<statement period, e.g. Oct 2024 - Nov 2024>",
+  "beginning_balance": <number>,
+  "ending_balance": <number>,
+  "average_balance": <number>,
+  "months": [
+    { "month": "<Mon YYYY>", "income": <total credits that month>, "expenses": <total debits that month>, "debt_payment": <debt/loan payments, 0 if none> }
+  ],
+  "total_credits": <number>,
+  "total_debits": <number>,
+  "service_charges": <number>,
   "bills": [
     { "id": "1", "provider": "<payee or merchant name>", "status": "paid|unpaid", "amount": <number>, "month": "<Mon YYYY>" }
   ],
-  "monthlyIncome": <total credits/deposits as a number, or null if not visible>,
-  "monthlyExpenses": <total debits/withdrawals as a number>,
+  "monthlyIncome": <total credits as a number>,
+  "monthlyExpenses": <total debits as a number>,
   "totalDebt": <outstanding debt or 0>,
   "latePayments": <count of overdue or late payments>,
   "creditScore": <integer 300-850 based on payment behaviour and balance health>,
   "riskLevel": "<LOW if score>=700, MEDIUM if 600-699, HIGH if <600>",
   "scoreBreakdown": {
-    "payment_history": <integer out of 35>,
-    "debt_ratio": <integer out of 30>,
-    "average_balance": <integer out of 35>
+    "payment_history": <integer out of 35, higher for on-time payments>,
+    "debt_ratio": <integer out of 30, higher for lower debt-to-income>,
+    "average_balance": <integer out of 35, higher for healthy balances>
   }
 }`,
               },
@@ -126,6 +143,7 @@ Return exactly this structure (compute all values from what you see):
       const { financialData } = req.body;
       const completion = await groq.chat.completions.create({
         model: "llama-3.3-70b-versatile",
+        temperature: 0,
         messages: [
           { role: "system", content: "You are a credit scoring AI. Return ONLY raw valid JSON." },
           {

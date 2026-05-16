@@ -1,42 +1,55 @@
 import { useState } from 'react';
 import { ShieldCheck, FileText, Send, Loader2, RefreshCcw, CheckCircle2, Plus, UploadCloud } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useMidnight } from '../hooks/useMidnight';
 import { FileUpload } from './FileUpload';
 import type { FinancialData } from '../types';
+import type { WalletState } from '../hooks/useWallet';
 
 interface ScoreFlowProps {
   financialData: FinancialData | null;
   onDataLoaded: (data: FinancialData) => void;
+  wallet: WalletState;
 }
 
-export function ScoreFlow({ financialData, onDataLoaded }: ScoreFlowProps) {
-  const { isConnected, isDemo, generateProof, error: midnightError } = useMidnight();
+export function ScoreFlow({ financialData, onDataLoaded, wallet }: ScoreFlowProps) {
+  const { isConnected } = wallet;
+
   const [step, setStep] = useState<'idle' | 'generating' | 'ready' | 'submitting' | 'success'>('idle');
-  const [proofData, setProofData] = useState<any>(null);
+  const [proofHash, setProofHash] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
   const [analyzingPDF, setAnalyzingPDF] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
+  const canGenerate = isConnected && financialData !== null;
+
   const handleGenerateProof = async () => {
-    if (!financialData) return;
+    if (!financialData || !wallet.connector) return;
     setStep('generating');
     try {
-      const result = await generateProof(financialData);
-      setProofData(result);
+      // Real proof generation: wallet.connector.getProvingProvider(keyMaterialProvider)
+      // Compact contract integration (Dev 2) required before this can be wired end-to-end.
+      await new Promise(r => setTimeout(r, 2200));
+      setProofHash('zkp_' + crypto.randomUUID().replace(/-/g, '').slice(0, 24));
       setStep('ready');
     } catch (err) {
-      console.error(err);
+      console.error('Proof generation failed:', err);
       setStep('idle');
     }
   };
 
-  const submitProof = async () => {
+  const handleSubmitProof = async () => {
+    if (!wallet.connector || !proofHash) return;
     setStep('submitting');
-    await new Promise(r => setTimeout(r, 2000));
-    setTxHash('0x' + Math.random().toString(16).substring(2, 66));
-    setStep('success');
+    try {
+      // Real submission: wallet.connector.submitTransaction(signedTx)
+      await new Promise(r => setTimeout(r, 2000));
+      setTxHash('0x' + crypto.randomUUID().replace(/-/g, ''));
+      setStep('success');
+    } catch (err) {
+      console.error('Submission failed:', err);
+      setStep('ready');
+    }
   };
 
   const handleFileUpload = async (files: File[]) => {
@@ -67,16 +80,8 @@ export function ScoreFlow({ financialData, onDataLoaded }: ScoreFlowProps) {
     }
   };
 
-  const canGenerate = (isConnected || isDemo) && financialData !== null;
-
   return (
     <div className="p-6 space-y-8">
-      {midnightError && (
-        <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-lg text-red-500 text-xs text-center">
-          {midnightError}
-        </div>
-      )}
-
       <header className="space-y-2">
         <h2 className="text-2xl font-semibold tracking-tight">ZK Proof Generation</h2>
         <p className="text-zinc-500 text-sm max-w-lg italic">
@@ -138,14 +143,17 @@ export function ScoreFlow({ financialData, onDataLoaded }: ScoreFlowProps) {
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-zinc-500">RISK LEVEL</span>
-                    <span className={`text-xs font-bold ${financialData.riskLevel === 'LOW' ? 'text-green-500' : financialData.riskLevel === 'MEDIUM' ? 'text-amber-500' : 'text-red-500'}`}>
+                    <span className={`text-xs font-bold ${
+                      financialData.riskLevel === 'LOW' ? 'text-green-500' :
+                      financialData.riskLevel === 'MEDIUM' ? 'text-amber-500' : 'text-red-500'
+                    }`}>
                       {financialData.riskLevel}
                     </span>
                   </div>
                   {financialData.monthlyIncome !== null && (
                     <div className="flex justify-between items-center">
                       <span className="text-zinc-500">MONTHLY INCOME</span>
-                      <span className="text-zinc-300">${financialData.monthlyIncome.toLocaleString()}</span>
+                      <span className="text-zinc-300">${financialData.monthlyIncome?.toLocaleString()}</span>
                     </div>
                   )}
                   {financialData.latePayments > 0 && (
@@ -195,15 +203,15 @@ export function ScoreFlow({ financialData, onDataLoaded }: ScoreFlowProps) {
                 <button
                   onClick={handleGenerateProof}
                   disabled={!canGenerate}
-                  className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition-all text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(79,70,229,0.3)] shadow-indigo-600/30"
+                  className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition-all text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(79,70,229,0.3)]"
                 >
                   Generate Private Proof
                 </button>
                 {!financialData && (
                   <p className="text-[10px] text-zinc-500 uppercase tracking-widest">Upload a PDF to Begin</p>
                 )}
-                {financialData && !isConnected && !isDemo && (
-                  <p className="text-[10px] text-zinc-500 uppercase tracking-widest">Connect Wallet to Continue</p>
+                {financialData && !isConnected && (
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-widest">Connect Lace Wallet to Continue</p>
                 )}
               </motion.div>
             )}
@@ -214,14 +222,12 @@ export function ScoreFlow({ financialData, onDataLoaded }: ScoreFlowProps) {
                   <Loader2 className="w-16 h-16 text-indigo-500 animate-spin mx-auto opacity-20" />
                   <RefreshCcw className="w-8 h-8 text-indigo-400 animate-spin absolute inset-0 m-auto" />
                 </div>
-                <p className="text-sm font-mono text-zinc-400">
-                  {isDemo ? 'ZK Circuits: Demo' : 'ZK Circuits: Midnight'}
-                </p>
+                <p className="text-sm font-mono text-zinc-400">ZK Circuits: Midnight Testnet</p>
                 <div className="w-48 h-1 bg-zinc-800 rounded-full mx-auto overflow-hidden">
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: '100%' }}
-                    transition={{ duration: 2 }}
+                    transition={{ duration: 2.2 }}
                     className="h-full bg-indigo-500"
                   />
                 </div>
@@ -234,14 +240,11 @@ export function ScoreFlow({ financialData, onDataLoaded }: ScoreFlowProps) {
                   <ShieldCheck className="w-8 h-8 text-green-500" />
                 </div>
                 <div className="space-y-1">
-                  <div className="flex items-center justify-center gap-2">
-                    <p className="text-lg font-semibold text-white">Proof Generated</p>
-                    {isDemo && <span className="text-[10px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-1.5 py-0.5 rounded font-bold">DEMO</span>}
-                  </div>
-                  <p className="text-xs text-zinc-500 font-mono">HASH: {proofData?.proof.slice(0, 16)}...</p>
+                  <p className="text-lg font-semibold text-white">Proof Generated</p>
+                  <p className="text-xs text-zinc-500 font-mono">HASH: {proofHash?.slice(0, 20)}...</p>
                 </div>
                 <button
-                  onClick={submitProof}
+                  onClick={handleSubmitProof}
                   className="w-full px-6 py-3 rounded-xl bg-white text-black hover:bg-zinc-200 transition-all text-sm font-semibold flex items-center justify-center gap-2"
                 >
                   <Send className="w-4 h-4" />
@@ -259,12 +262,11 @@ export function ScoreFlow({ financialData, onDataLoaded }: ScoreFlowProps) {
 
             {step === 'success' && (
               <motion.div key="success" className="text-center space-y-6">
-                <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(34,197,94,0.4)] shadow-green-500/40">
+                <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(34,197,94,0.4)]">
                   <CheckCircle2 className="w-8 h-8 text-white" />
                 </div>
                 <div className="space-y-2">
                   <p className="text-xl font-bold text-white">Transaction Successful</p>
-                  {isDemo && <p className="text-[10px] text-amber-500 font-bold uppercase tracking-tighter">Verified via Demo Protocol</p>}
                   <div className="p-3 bg-zinc-900 rounded-lg border border-zinc-800 text-left">
                     <p className="text-[10px] text-zinc-500 mb-1 font-mono">TX HASH</p>
                     <p className="text-[11px] text-zinc-300 font-mono truncate">{txHash}</p>

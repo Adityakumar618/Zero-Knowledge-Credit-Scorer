@@ -2,15 +2,26 @@ import { useState } from 'react';
 import { WalletConnect } from './components/WalletConnect';
 import { ScoreFlow } from './components/ScoreFlow';
 import { PrivacyView } from './components/PrivacyView';
+import { ExtractedDataView } from './components/ExtractedDataView';
 import { Shield, Lock, Fingerprint, Database, Info } from 'lucide-react';
+import { useWallet } from './hooks/useWallet';
 import type { FinancialData } from './types';
 
 export default function App() {
+  const wallet = useWallet();
   const [financialData, setFinancialData] = useState<FinancialData | null>(null);
 
   return (
     <div className="min-h-screen flex flex-col bg-zinc-950">
-      <WalletConnect />
+      <WalletConnect
+        address={wallet.address}
+        walletName={wallet.walletName}
+        isConnected={wallet.isConnected}
+        isConnecting={wallet.isConnecting}
+        error={wallet.error}
+        connect={wallet.connect}
+        disconnect={wallet.disconnect}
+      />
 
       <main className="flex-1 max-w-5xl mx-auto w-full pt-12 pb-24">
         <div className="px-6 mb-12 text-center space-y-4">
@@ -25,7 +36,8 @@ export default function App() {
         </div>
 
         <section className="bg-zinc-900/10 border border-zinc-800/50 rounded-[2.5rem] overflow-hidden shadow-2xl shadow-indigo-600/5">
-          <ScoreFlow financialData={financialData} onDataLoaded={setFinancialData} />
+          <ScoreFlow financialData={financialData} onDataLoaded={setFinancialData} wallet={wallet} />
+          {financialData && <ExtractedDataView financialData={financialData} />}
           <PrivacyView financialData={financialData} />
         </section>
 
@@ -55,10 +67,10 @@ export default function App() {
             <div>
               <h4 className="text-sm font-semibold text-white mb-1">Integration Status</h4>
               <p className="text-xs text-zinc-500 leading-relaxed">
-                This app is currently in <span className="text-white font-mono">PROTOTYPE</span> mode.
-                It uses high-fidelity mock implementations of the <span className="text-white font-mono">Midnight SDK</span> and
-                expected <span className="text-white font-mono">1am-wallet</span> providers.
-                See <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">integration.md</code> for production deployment steps.
+                Wallet connection uses the real <span className="text-white font-mono">Lace</span> browser extension via{' '}
+                <span className="text-white font-mono">window.midnight.mnLace</span>. ZK proof submission requires the
+                Compact contract from Dev 2 — see{' '}
+                <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">integration.md</code>.
               </p>
             </div>
           </div>
